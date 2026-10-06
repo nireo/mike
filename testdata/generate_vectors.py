@@ -52,7 +52,7 @@ static void print_hex(const unsigned char *b, size_t n) {
     puts("");
 }
 int main(int argc, char **argv) {
-    if (argc != 2 || strlen(argv[1]) != 2 * sizeof(seed)) return 1;
+    if ((argc != 2 && argc != 3) || strlen(argv[1]) != 2 * sizeof(seed)) return 1;
     for (size_t i = 0; i < sizeof(seed); i++) {
         unsigned value;
         if (sscanf(argv[1] + 2*i, "%2x", &value) != 1) return 1;
@@ -80,6 +80,24 @@ int main(int argc, char **argv) {
     }
     hash_shared_secret(buf, &shared);
     print_hex(buf, SHARED_BYTES);
+    if (argc == 3) {
+        unsigned char peer_bytes[PUBLICKEY_BYTES];
+        if (strlen(argv[2]) != 2 * sizeof(peer_bytes)) return 1;
+        for (size_t i = 0; i < sizeof(peer_bytes); i++) {
+            unsigned value;
+            if (sscanf(argv[2] + 2*i, "%2x", &value) != 1) return 1;
+            peer_bytes[i] = value;
+        }
+        public_key_t peer;
+        if (!public_key_from_bytes(&peer, peer_bytes)) return 3;
+        if (!protocols_exchange(&shared, &peer, &sk)) return 3;
+        for (int i = 0; i < 4; i++) {
+            fp_encode(buf, &shared.invariant[i]);
+            print_hex(buf, FP_ENCODED_BYTES);
+        }
+        hash_shared_secret(buf, &shared);
+        print_hex(buf, SHARED_BYTES);
+    }
     return 0;
 }
 '''
@@ -93,15 +111,20 @@ def main():
                "src/gf/ref/lvlx/fp2.c", "src/precomp/ref/p308_633/constants.c",
                "src/precomp/ref/p308_633/e0_basis.c", "src/ec/ref/lvlx/normalize.c",
                "src/nike/ref/lvlx/keygen.c", "src/nike/ref/lvlx/encode.c",
-               "src/common/generic/fips202.c"]
-    selected = "#include <assert.h>\n#include <ec_isog.h>\n" + functions("src/ec/ref/lvlx/ec.c", [
-        "ec_curve_init_from_A", "ec_compute_A24", "ec_xDBLADD", "ec_ladder3pt"])
+               "src/common/generic/fips202.c", "src/ec/ref/lvlx/basis.c",
+               "src/precomp/ref/p308_633/ec_params.c", "src/nike/ref/lvlx/exchange.c"]
+    sources += [str(p.relative_to(C)) for module in ["theta", "weil"]
+                for p in sorted((C / f"src/{module}/ref/lvlx").glob("*.c"))]
+    selected = (C / "src/ec/ref/lvlx/ec.c").read_text()
+    selected = re.sub(r"void\s*\nec_ladder3pt", "int\nec_ladder3pt", selected)
+    selected = "#include <ec_isog.h>\n" + selected
     selected += "\n" + functions("src/ec/ref/lvlx/isog_chains.c", [
         "ec_xDBL_A24", "ec_iso_xisog_4", "ec_iso_xeval_4",
         "ec_iso_isogeny_2chain_with_strategy", "ec_iso_isogeny_2chain"])
     seeds = [bytes(29), bytes([255])*29, bytes(range(29))]
     seeds += [hashlib.sha256(f"MIKE Go vector {i}".encode()).digest()[:29] for i in range(5)]
     vectors = []
+    exchanges = []
     with tempfile.TemporaryDirectory(prefix="mike-vectors-") as temp:
         temp = Path(temp)
         (temp / "ec.c").write_text(selected)
@@ -114,9 +137,21 @@ def main():
         for seed in seeds:
             lines = subprocess.check_output([str(temp / "oracle"), seed.hex()], text=True).splitlines()
             vectors.append({"seed": seed.hex(), "secret_key": lines[5], "public_key": lines[6]})
+        constants_lines = lines
+        for alice, bob in [(0, 1), (0, 2), (2, 3), (4, 5), (6, 7), (3, 3)]:
+            lines = subprocess.check_output([str(temp / "oracle"), seeds[alice].hex(),
+                                             vectors[bob]["public_key"]], text=True).splitlines()
+            reverse = subprocess.check_output([str(temp / "oracle"), seeds[bob].hex(),
+                                               vectors[alice]["public_key"]], text=True).splitlines()
+            if lines[12:] != reverse[12:]:
+                raise ValueError("C reference parties disagree")
+            exchanges.append({"alice": alice, "bob": bob, "invariants": "".join(lines[12:16]),
+                              "shared_secret": lines[16]})
+    lines = constants_lines
     output = {"parameter_set": "p308_633", "constants": dict(zip(
         ["a0", "basis_p", "basis_q", "basis_p_minus_q_re", "basis_p_minus_q_im"], lines[:5])),
-        "keypairs": vectors, "invariants": "".join(lines[7:11]), "shared_hash": lines[11]}
+        "keypairs": vectors, "invariants": "".join(lines[7:11]), "shared_hash": lines[11],
+        "exchanges": exchanges}
     (ROOT / "testdata/p308_633.json").write_text(json.dumps(output, indent=2) + "\n")
 
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
-// Package mike implements MIKE p308_633 key generation and wire encodings.
-// Key exchange is not yet implemented.
+// Package mike implements MIKE p308_633 key generation, key exchange, and
+// C-compatible wire encodings.
 package mike
 
 import (

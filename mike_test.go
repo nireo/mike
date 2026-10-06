@@ -22,6 +22,12 @@ type referenceVectors struct {
 	} `json:"keypairs"`
 	Invariants string `json:"invariants"`
 	SharedHash string `json:"shared_hash"`
+	Exchanges  []struct {
+		Alice        int    `json:"alice"`
+		Bob          int    `json:"bob"`
+		Invariants   string `json:"invariants"`
+		SharedSecret string `json:"shared_secret"`
+	} `json:"exchanges"`
 }
 
 func readVectors(t testing.TB) referenceVectors {
