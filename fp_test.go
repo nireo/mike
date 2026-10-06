@@ -82,7 +82,7 @@ func TestExtensionField(t *testing.T) {
 		t.Fatal("Fp2 square mismatch")
 	}
 	one := defaultParameters.fp2Mul(x, defaultParameters.fp2Inv(x))
-	if one.re.IsOne() != 1 || one.im.IsZero() != 1 {
+	if defaultParameters.fpIsOne(one.re) != 1 || one.im.IsZero() != 1 {
 		t.Fatal("Fp2 inversion mismatch")
 	}
 	if !defaultParameters.fp2IsZero(defaultParameters.fp2Inv(defaultParameters.fp2Small(0))) {

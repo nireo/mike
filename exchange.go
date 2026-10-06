@@ -16,22 +16,24 @@ func Exchange(peer PublicKey, secret SecretKey) ([SharedSecretSize]byte, error) 
 }
 
 // The raw invariant encoding is kept internal; hashing is part of Exchange.
-func (f *parameters) exchangeInvariants(peer, secret []byte) ([]byte, error) {
+func (f *parameters) exchangeInvariants(encoded, peer, secret []byte) error {
+	if len(encoded) != 4*f.fieldBytes {
+		panic("mike: incorrect invariant buffer size")
+	}
 	a, err := f.decodePublicKey(peer)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	encoded := make([]byte, 4*f.fieldBytes)
 	a24 := f.fp2Half(f.fp2Half(f.fp2Add(a, f.fp2Small(2))))
 	p, q, ok := f.ecBasis(a, a24)
 	if !ok {
-		return nil, ErrExchange
+		return ErrExchange
 	}
 	p32, q32 := f.ecJacDblIter(p, f.chainLength+f.hdMargin-5, a), f.ecJacDblIter(q, f.chainLength+f.hdMargin-5, a)
 	gluingBasis := f.gluingBasisCompute(p32, q32, secret, a, a24)
 	gluing, ok := f.gluingMikeCompute(a, gluingBasis)
 	if !ok {
-		return nil, ErrExchange
+		return ErrExchange
 	}
 	basis := f.mikeComputeBasis(p, q, secret, a, a24)
 	t3 := f.gluingMikeEval(basis.t31, basis.t32, gluing)
@@ -44,7 +46,7 @@ func (f *parameters) exchangeInvariants(peer, secret []byte) ([]byte, error) {
 		f.fpEncode(encoded[i*f.fieldBytes:(i+1)*f.fieldBytes], x)
 	}
 	if allZero == 1 {
-		return nil, ErrExchange
+		return ErrExchange
 	}
-	return encoded, nil
+	return nil
 }

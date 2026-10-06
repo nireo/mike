@@ -2,8 +2,6 @@
 
 package mike
 
-import "math/bits"
-
 // Theta coordinates follow theta/ref/include/theta.h. Immutable field values
 // let arrays be copied directly, including when a formula overwrites its input.
 type theta2 [4]fp
@@ -17,20 +15,18 @@ var thetaToWeil = [16]int{0, 1, 2, 3, 2, 4, 5, 6, 1, 7, 4, 8, 3, 8, 6, 9}
 var weilToTheta = [10]int{0, 1, 2, 3, 5, 6, 7, 9, 11, 15}
 
 // Hadamard butterflies are the same four stages as theta_hadamard_dim4 in C.
-func (f *parameters) thetaHadamard(in []fp) []fp {
-	out := append([]fp(nil), in...)
-	for step := 1; step < len(out); step *= 2 {
-		for base := 0; base < len(out); base += 2 * step {
+func (f *parameters) thetaHadamard(x []fp) {
+	for step := 1; step < len(x); step *= 2 {
+		for base := 0; base < len(x); base += 2 * step {
 			for i := 0; i < step; i++ {
-				x, y := out[base+i], out[base+i+step]
-				out[base+i], out[base+i+step] = f.fpAdd(x, y), f.fpSub(x, y)
+				u, v := x[base+i], x[base+i+step]
+				x[base+i], x[base+i+step] = f.fpAdd(u, v), f.fpSub(u, v)
 			}
 		}
 	}
-	return out
 }
-func (f *parameters) thetaH2(x theta2) theta2 { return theta2(f.thetaHadamard(x[:])) }
-func (f *parameters) thetaH4(x theta4) theta4 { return theta4(f.thetaHadamard(x[:])) }
+func (f *parameters) thetaH2(x theta2) theta2 { f.thetaHadamard(x[:]); return x }
+func (f *parameters) thetaH4(x theta4) theta4 { f.thetaHadamard(x[:]); return x }
 func (f *parameters) thetaExpand(x weilPoint) theta4 {
 	var out theta4
 	for i := range out {
@@ -84,9 +80,13 @@ func (f *parameters) thetaDotWeil(x theta4, y weilPoint) theta4 {
 	}
 	return x
 }
-func (f *parameters) thetaInv2(x theta2) theta2 { return theta2(f.fpProjectiveInverse(x[:])) }
+func (f *parameters) thetaInv2(x theta2) theta2 {
+	f.fpProjectiveInverse(x[:], x[:])
+	return x
+}
 func (f *parameters) thetaInvWeil(x weilPoint) weilPoint {
-	return weilPoint(f.fpProjectiveInverse(x[:]))
+	f.fpProjectiveInverse(x[:], x[:])
+	return x
 }
 
 // Dimension-2 routines map to isogeny_dim2.c and theta_struct_dim2.c.
@@ -171,9 +171,8 @@ func (f *parameters) thetaDblIterWeil(p theta4, pre weilPrecomp, n int) theta4 {
 // transition after the first step.
 func (f *parameters) isogenyChainWeil(invDual weilPoint, pre weilPrecomp, t3, t4 theta4) weilPoint {
 	length := f.chainLength - 3
-	depth := bits.Len(uint(length-1)) + 1
-	ker := make([][2]theta4, depth)
-	orders := make([]int, depth)
+	var ker [maxIsogenyDepth][2]theta4
+	var orders [maxIsogenyDepth]int
 	ker[0], orders[0] = [2]theta4{t3, t4}, length
 	current, step := 0, 0
 	for current >= 0 {

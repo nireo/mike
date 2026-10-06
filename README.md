@@ -60,6 +60,8 @@ shared secrets are 32 bytes for every set.
 Fields use vendored pure Go [bigmod](internal/bigmod/README.md). `math/big` is
 used only to initialize public parameters; randomness, SHA3-256, and conditional
 selection use the standard library. No cgo, assembly, or external module dependencies.
+Field temporaries use fixed-size stack storage and remain in Montgomery form
+between multiplications.
 
 See the [timing review](TIMING_REVIEW.md) for findings and remaining timing risks.
 

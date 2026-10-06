@@ -171,8 +171,9 @@ func (set ParameterSet) Exchange(peer, secret []byte) ([SharedSecretSize]byte, e
 	if !f.validSecretKey(secret) {
 		return [SharedSecretSize]byte{}, ErrSecretKey
 	}
-	invariants, err := f.exchangeInvariants(peer, secret)
-	if err != nil {
+	var encoded [4 * (maxPublicKeySize / 2)]byte
+	invariants := encoded[:4*f.fieldBytes]
+	if err := f.exchangeInvariants(invariants, peer, secret); err != nil {
 		return [SharedSecretSize]byte{}, err
 	}
 	return sha3.Sum256(invariants), nil

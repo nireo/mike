@@ -17,6 +17,7 @@ const maxPublicKeySize = 192
 type parameters struct {
 	name                                               string
 	securityBits, fieldBytes, secretBytes, publicBytes int
+	limbCount                                          int
 	secretBits, chainLength, hdMargin, torsionPower    int
 
 	cofactorLE   []byte
@@ -26,6 +27,7 @@ type parameters struct {
 
 	inverseExponent, sqrtExponent, progenitorExponent, legendreExponent []byte
 	inverseTwo                                                          fp
+	small                                                               [4]fp
 
 	curveA, curveA24         fp2
 	basisP, basisQ, basisPmQ ecPoint
@@ -40,18 +42,27 @@ func newParameters(name string, securityBits, fieldBytes, secretBits, chainLengt
 	f := &parameters{
 		name: name, securityBits: securityBits, fieldBytes: fieldBytes,
 		secretBytes: (secretBits + 7) / 8, publicBytes: 2 * fieldBytes,
+		limbCount:  (fieldBytes + limbBytes - 1) / limbBytes,
 		secretBits: secretBits, chainLength: chainLength, hdMargin: hdMargin, torsionPower: torsionPower,
 		cofactorBits: bits.Len(uint(cofactor)), primeBytes: p.Bytes(),
 	}
 	f.prime = mustModulus(f.primeBytes)
+	for i := range f.small {
+		f.small[i] = fp{n: f.limbCount}
+		f.small[i].limbs[0] = uint(i)
+		n := f.small[i].nat()
+		n.ToMontgomery(f.prime)
+	}
 	f.cofactorLE = big.NewInt(int64(cofactor)).Bytes()
 	slices.Reverse(f.cofactorLE)
 	f.inverseExponent = new(big.Int).Sub(p, big.NewInt(2)).Bytes()
 	f.sqrtExponent = new(big.Int).Rsh(new(big.Int).Add(p, big.NewInt(1)), 2).Bytes()
 	f.progenitorExponent = new(big.Int).Rsh(new(big.Int).Sub(p, big.NewInt(3)), 2).Bytes()
 	f.legendreExponent = new(big.Int).Rsh(new(big.Int).Sub(p, big.NewInt(1)), 1).Bytes()
-	f.inverseTwo = new(bigmod.Nat)
-	if _, err := f.inverseTwo.SetBytes(new(big.Int).Rsh(new(big.Int).Add(p, big.NewInt(1)), 1).Bytes(), f.prime); err != nil {
+	inverseTwo := new(big.Int).Rsh(new(big.Int).Add(p, big.NewInt(1)), 1).FillBytes(make([]byte, fieldBytes))
+	slices.Reverse(inverseTwo)
+	var err error
+	if f.inverseTwo, err = f.fpDecode(inverseTwo); err != nil {
 		panic(err)
 	}
 	f.curveA = fp2{f.mustFP(a0), f.fpSmall(0)}

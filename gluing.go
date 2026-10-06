@@ -162,7 +162,8 @@ func (f *parameters) gluingSpecialInv(x weilPoint) weilPoint {
 	for i, j := range indices {
 		nonzero[i] = x[j]
 	}
-	inverse := f.fpProjectiveInverse(nonzero[:])
+	var inverse [7]fp
+	f.fpProjectiveInverse(inverse[:], nonzero[:])
 	var out weilPoint
 	for i := range out {
 		out[i] = f.fpSmall(0)
@@ -198,7 +199,8 @@ func (f *parameters) solveGluingHIIP(h [4]theta4) (weilPoint, theta4) {
 			aux[i] = f.fpMul(aux[i], tmp)
 		}
 	}
-	inverse := f.fpProjectiveInverse(aux[:])
+	var inverse [8]fp
+	f.fpProjectiveInverse(inverse[:], aux[:])
 	var invAux theta4
 	for i := 0; i < 2; i++ {
 		for j := 0; j < 4; j++ {

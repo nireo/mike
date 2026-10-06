@@ -2,34 +2,39 @@
 
 package mike
 
-import "github.com/nireo/mike/internal/bigmod"
-
 func (f *parameters) fpExp(x fp, exponent []byte) fp {
-	return new(bigmod.Nat).Exp(x, exponent, f.prime)
+	z := f.fpSmall(0)
+	xn, zn := x.nat(), z.nat()
+	xn.FromMontgomery(f.prime)
+	zn.Exp(&xn, exponent, f.prime)
+	zn.ToMontgomery(f.prime)
+	return z
 }
 func (f *parameters) fpHalf(x fp) fp { return f.fpMul(x, f.inverseTwo) }
 func (f *parameters) fpIsSquare(x fp) bool {
-	return f.fpExp(x, f.legendreExponent).IsOne()|x.IsZero() == 1
+	return f.fpIsOne(f.fpExp(x, f.legendreExponent))|x.IsZero() == 1
 }
 
-// fpProjectiveInverse returns products of all coordinates except the selected
+// fpProjectiveInverse writes products of all coordinates except the selected
 // one, matching fp_proj_batched_inv. This preserves the reference's handling
-// of zero coordinates without performing an inversion.
-func (f *parameters) fpProjectiveInverse(x []fp) []fp {
-	prefix := make([]fp, len(x))
+// of zero coordinates without performing an inversion. out may alias x.
+func (f *parameters) fpProjectiveInverse(out, x []fp) {
+	var prefix [16]fp // Largest theta coordinate vector.
+	if len(x) == 0 || len(x) > len(prefix) || len(out) != len(x) {
+		panic("mike: invalid projective inverse size")
+	}
 	prefix[0] = f.fpSmall(1)
 	for i := 1; i < len(x); i++ {
 		prefix[i] = f.fpMul(prefix[i-1], x[i-1])
 	}
-	out := make([]fp, len(x))
 	suffix := f.fpSmall(1)
 	for i := len(x) - 1; i >= 0; i-- {
-		out[i] = f.fpMul(prefix[i], suffix)
+		product := f.fpMul(prefix[i], suffix)
 		if i > 0 {
 			suffix = f.fpMul(suffix, x[i])
 		}
+		out[i] = product
 	}
-	return out
 }
 
 func (f *parameters) fp2Norm(x fp2) fp            { return f.fpAdd(f.fpSqr(x.re), f.fpSqr(x.im)) }
@@ -51,7 +56,7 @@ func (f *parameters) fp2Sqrt(x fp2) (fp2, bool) {
 	choice := int(f.fpSub(t0, t1).IsZero())
 	re := f.fpSelect(x1, x0, choice)
 	im := f.fpSelect(f.fpNeg(x0), x1, choice)
-	negate := int(re.IsOdd() | (re.IsZero() & im.IsOdd()))
+	negate := int(f.fpIsOdd(re) | (re.IsZero() & f.fpIsOdd(im)))
 	out := fp2{f.fpSelect(re, f.fpNeg(re), negate), f.fpSelect(im, f.fpNeg(im), negate)}
 	return out, f.fp2EqualChoice(f.fp2Sqr(out), x) == 1
 }

@@ -19,7 +19,7 @@ func TestExtensionSquareRoots(t *testing.T) {
 	if _, ok := defaultParameters.fp2Sqrt(fp2{defaultParameters.fpSmall(1), defaultParameters.fpSmall(2)}); ok {
 		t.Fatal("accepted a nonsquare")
 	}
-	if defaultParameters.fpHalf(defaultParameters.fpSmall(2)).IsOne() != 1 {
+	if defaultParameters.fpIsOne(defaultParameters.fpHalf(defaultParameters.fpSmall(2))) != 1 {
 		t.Fatal("incorrect inverse of two")
 	}
 }
@@ -31,8 +31,14 @@ func TestProjectiveInverseWithZeros(t *testing.T) {
 		{[3]uint{0, 0, 5}, [3]uint{0, 0, 0}},
 	} {
 		x := []fp{defaultParameters.fpSmall(tc.input[0]), defaultParameters.fpSmall(tc.input[1]), defaultParameters.fpSmall(tc.input[2])}
-		inverse := defaultParameters.fpProjectiveInverse(x)
+		inverse := make([]fp, len(x))
+		defaultParameters.fpProjectiveInverse(inverse, x)
+		inPlace := append([]fp(nil), x...)
+		defaultParameters.fpProjectiveInverse(inPlace, inPlace)
 		for i := range x {
+			if inPlace[i].Equal(inverse[i]) != 1 {
+				t.Fatal("aliased projective inverse mismatch")
+			}
 			if inverse[i].Equal(defaultParameters.fpSmall(tc.want[i])) != 1 {
 				t.Fatal("incorrect projective inverse")
 			}
@@ -49,7 +55,9 @@ func TestThetaHadamardInvolution(t *testing.T) {
 		for i := range x {
 			x[i] = defaultParameters.fpSmall(uint(i))
 		}
-		got := defaultParameters.thetaHadamard(defaultParameters.thetaHadamard(x))
+		got := append([]fp(nil), x...)
+		defaultParameters.thetaHadamard(got)
+		defaultParameters.thetaHadamard(got)
 		for i := range got {
 			if got[i].Equal(defaultParameters.fpSmall(uint(size*i))) != 1 {
 				t.Fatal("incorrect Hadamard scaling")

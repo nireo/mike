@@ -5,15 +5,37 @@ package mike
 import (
 	"crypto/subtle"
 	"encoding/hex"
-	"slices"
+	"math/bits"
 
 	"github.com/nireo/mike/internal/bigmod"
 )
 
 // Prime-field arithmetic is delegated to the upstream bigmod implementation.
-// These wrappers keep the C formulas readable. Values are immutable: every
-// operation returns a fresh Nat, so copying a point never aliases mutable limbs.
-type fp = *bigmod.Nat
+// These wrappers keep the C formulas readable. Fixed-size values own their
+// limbs in Montgomery form, so results can live on the stack and copying a
+// point never aliases mutable storage. Nat views borrow that storage only
+// during an operation; conversion happens at encoding and exponentiation.
+const limbBytes = bits.UintSize / 8
+const maxFieldLimbs = (maxPublicKeySize / 2) / limbBytes
+
+type fp struct {
+	limbs [maxFieldLimbs]uint
+	n     int // Public modulus size, never derived from the field value.
+}
+
+func (x *fp) nat() bigmod.Nat { return bigmod.NewNatWithStorage(x.limbs[:x.n]) }
+
+func (x fp) IsZero() uint { n := x.nat(); return n.IsZero() }
+func (x fp) Equal(y fp) uint {
+	xn, yn := x.nat(), y.nat()
+	return xn.Equal(&yn)
+}
+
+func (x fp) Bytes(m *bigmod.Modulus) []byte {
+	n := x.nat()
+	n.FromMontgomery(m)
+	return n.Bytes(m)
+}
 
 func mustHex(s string) []byte {
 	b, err := hex.DecodeString(s)
@@ -31,42 +53,78 @@ func mustModulus(b []byte) *bigmod.Modulus {
 	return m
 }
 
-// new(Nat) lets bigmod allocate only the limbs needed for this modulus;
-// NewNat preallocates 2048 bits for RSA, which wastes space for MIKE.
-func (f *parameters) fpSmall(x uint) fp { return new(bigmod.Nat).SetUint(x).ExpandFor(f.prime) }
-
-func (f *parameters) fpCopy(x fp) fp {
-	z := new(bigmod.Nat).ExpandFor(f.prime)
-	copy(z.Bits(), x.Bits())
+func (f *parameters) fpSmall(x uint) fp {
+	// x is a public constant or a public basis-search candidate, never a
+	// secret-derived field value. Cache the common constants 0 through 3.
+	if x < uint(len(f.small)) {
+		return f.small[x]
+	}
+	z := fp{n: f.limbCount}
+	z.limbs[0] = x
+	zn := z.nat()
+	zn.ToMontgomery(f.prime)
 	return z
 }
 
-func (f *parameters) fpAdd(x, y fp) fp { return f.fpCopy(x).Add(y, f.prime) }
-func (f *parameters) fpSub(x, y fp) fp { return f.fpCopy(x).Sub(y, f.prime) }
-func (f *parameters) fpNeg(x fp) fp    { return f.fpSmall(0).Sub(x, f.prime) }
-func (f *parameters) fpMul(x, y fp) fp { return f.fpCopy(x).Mul(y, f.prime) }
-func (f *parameters) fpSqr(x fp) fp    { return f.fpMul(x, x) }
-func (f *parameters) fpInv(x fp) fp    { return new(bigmod.Nat).Exp(x, f.inverseExponent, f.prime) }
+func (f *parameters) fpIsOne(x fp) uint { return x.Equal(f.small[1]) }
+func (f *parameters) fpIsOdd(x fp) uint {
+	xn := x.nat()
+	xn.FromMontgomery(f.prime)
+	return xn.IsOdd()
+}
+
+func (f *parameters) fpAdd(x, y fp) fp {
+	xn, yn := x.nat(), y.nat()
+	xn.Add(&yn, f.prime)
+	return x
+}
+
+func (f *parameters) fpSub(x, y fp) fp {
+	xn, yn := x.nat(), y.nat()
+	xn.Sub(&yn, f.prime)
+	return x
+}
+
+func (f *parameters) fpNeg(x fp) fp { return f.fpSub(f.fpSmall(0), x) }
+func (f *parameters) fpMul(x, y fp) fp {
+	xn, yn := x.nat(), y.nat()
+	xn.MulMontgomery(&yn, f.prime)
+	return x
+}
+func (f *parameters) fpSqr(x fp) fp { return f.fpMul(x, x) }
+func (f *parameters) fpInv(x fp) fp { return f.fpExp(x, f.inverseExponent) }
 
 // fpSelect selects x for choice=0 or y for choice=1 using the stdlib primitive.
 func (f *parameters) fpSelect(x, y fp, choice int) fp {
-	z := new(bigmod.Nat).ExpandFor(f.prime)
-	for i := range z.Bits() {
-		z.Bits()[i] = uint(subtle.ConstantTimeSelect(choice, int(y.Bits()[i]), int(x.Bits()[i])))
+	z := fp{n: f.limbCount}
+	for i := 0; i < z.n; i++ {
+		z.limbs[i] = uint(subtle.ConstantTimeSelect(choice, int(y.limbs[i]), int(x.limbs[i])))
 	}
 	return z
 }
 
 func (f *parameters) fpDecode(b []byte) (fp, error) {
-	be := slices.Clone(b)
-	slices.Reverse(be)
-	return new(bigmod.Nat).SetBytes(be, f.prime)
+	if len(b) != f.fieldBytes {
+		return fp{}, ErrPublicKey
+	}
+	var be [maxPublicKeySize / 2]byte
+	for i := range b {
+		be[len(b)-1-i] = b[i]
+	}
+	x := f.fpSmall(0)
+	xn := x.nat()
+	if _, err := xn.SetBytes(be[:len(b)], f.prime); err != nil {
+		return fp{}, err
+	}
+	xn.ToMontgomery(f.prime)
+	return x, nil
 }
 
 func (f *parameters) fpEncode(b []byte, x fp) {
-	be := x.Bytes(f.prime)
-	for i := range be {
-		b[i] = be[len(be)-1-i]
+	xn := x.nat()
+	xn.FromMontgomery(f.prime)
+	for i := 0; i < f.fieldBytes; i++ {
+		b[i] = byte(x.limbs[i/limbBytes] >> (8 * (i % limbBytes)))
 	}
 }
 

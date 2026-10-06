@@ -2,7 +2,8 @@
 
 package mike
 
-import "math/bits"
+// ceil(log2(758))+1 covers the longest chain in the six supported sets.
+const maxIsogenyDepth = 11
 
 // ecPoint is a projective Montgomery x-coordinate (X:Z).
 type ecPoint struct{ x, z fp2 }
@@ -87,9 +88,8 @@ func (f *parameters) ecEval4(q ecPoint, k [3]fp2) ecPoint {
 // in ecNormalizeMontgomery, exactly as in the reference implementation.
 func (f *parameters) ecIsogeny2Chain(kernel ecPoint, a24 fp2, length int) (fp2, bool) {
 	// The balanced strategy uses ceil(log2(length))+1 stack slots.
-	depth := bits.Len(uint(length-1)) + 1
-	splits := make([]ecPoint, depth)
-	todo := make([]int, depth)
+	var splits [maxIsogenyDepth]ecPoint
+	var todo [maxIsogenyDepth]int
 	splits[0], todo[0] = kernel, length
 	a := ecPoint{a24, f.fp2Small(1)}
 	current := 0

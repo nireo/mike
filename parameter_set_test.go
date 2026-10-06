@@ -81,7 +81,8 @@ func TestAllParameterReferenceVectors(t *testing.T) {
 					bob := v.Keypairs[vector.Bob]
 					alicePublic, aliceSecret := decodeHex(t, alice.PublicKey), decodeHex(t, alice.SecretKey)
 					bobPublic, bobSecret := decodeHex(t, bob.PublicKey), decodeHex(t, bob.SecretKey)
-					invariants, err := f.exchangeInvariants(bobPublic, aliceSecret)
+					invariants := make([]byte, 4*f.fieldBytes)
+					err := f.exchangeInvariants(invariants, bobPublic, aliceSecret)
 					if err != nil || hex.EncodeToString(invariants) != vector.Invariants {
 						t.Fatalf("C invariants mismatch: %v", err)
 					}
@@ -297,7 +298,7 @@ func TestAllParameterFieldExponents(t *testing.T) {
 					t.Fatal("halving mismatch")
 				}
 				product := f.fpMul(x, f.fpInv(x))
-				if x.IsZero() == 0 && product.IsOne() != 1 {
+				if x.IsZero() == 0 && f.fpIsOne(product) != 1 {
 					t.Fatal("inversion mismatch")
 				}
 				if x.IsZero() == 1 && product.IsZero() != 1 {
@@ -310,7 +311,7 @@ func TestAllParameterFieldExponents(t *testing.T) {
 				if !ok || !f.fp2IsSquare(square) || f.fp2EqualChoice(f.fp2Sqr(root), square) != 1 {
 					t.Fatal("square root mismatch")
 				}
-				if root.re.IsOdd()|(root.re.IsZero()&root.im.IsOdd()) != 0 {
+				if f.fpIsOdd(root.re)|(root.re.IsZero()&f.fpIsOdd(root.im)) != 0 {
 					t.Fatal("noncanonical square root sign")
 				}
 			}

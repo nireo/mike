@@ -33,7 +33,8 @@ func TestReferenceExchanges(t *testing.T) {
 				t.Fatal(err)
 			}
 			// Check the raw invariants as well as the hashed exchange output.
-			invariants, err := defaultParameters.exchangeInvariants(bobPK[:], aliceSK[:])
+			invariants := make([]byte, 4*FieldElementSize)
+			err = defaultParameters.exchangeInvariants(invariants, bobPK[:], aliceSK[:])
 			if err != nil {
 				t.Fatal(err)
 			}
