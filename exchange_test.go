@@ -139,22 +139,3 @@ func TestExchangeRejectsInvalidKeys(t *testing.T) {
 		}
 	}
 }
-
-func BenchmarkExchange(b *testing.B) {
-	v := readVectors(b)
-	sk, err := ParseSecretKey(decodeHex(b, v.Keypairs[0].SecretKey))
-	if err != nil {
-		b.Fatal(err)
-	}
-	pk, err := ParsePublicKey(decodeHex(b, v.Keypairs[1].PublicKey))
-	if err != nil {
-		b.Fatal(err)
-	}
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		if _, err := Exchange(pk, sk); err != nil {
-			b.Fatal(err)
-		}
-	}
-}

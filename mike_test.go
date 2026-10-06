@@ -243,14 +243,3 @@ func TestCanonicalEncodings(t *testing.T) {
 		t.Fatal(err)
 	}
 }
-
-func BenchmarkGenerateKey(b *testing.B) {
-	seed := decodeHex(b, readVectors(b).Keypairs[2].Seed)
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		if _, _, err := GenerateKey(bytes.NewReader(seed)); err != nil {
-			b.Fatal(err)
-		}
-	}
-}

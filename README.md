@@ -61,15 +61,20 @@ Fields use vendored pure Go [bigmod](internal/bigmod/README.md). `math/big` is
 used only to initialize public parameters; randomness, SHA3-256, and conditional
 selection use the standard library. No cgo, assembly, or external module dependencies.
 
+See the [timing review](TIMING_REVIEW.md) for findings and remaining timing risks.
+
 Tests cover C vectors for every set, agreement, invalid keys, field arithmetic,
 and fuzz seed corpora. Run tests, benchmarks, or one fuzz target at a time:
 
 ```sh
 go test ./...
 go test -race ./...
-go test -run '^$' -bench . -benchmem
+go test -run '^$' -bench '^BenchmarkParameterSets(DIT)?$' -benchmem -cpu 1 -count 3
 go test -run '^$' -fuzz '^FuzzExchange$' -fuzztime 30s -parallel 2 -timeout 5m
 ```
+
+Benchmarks cover all sets; see the [performance comparison](benchmarks/README.md)
+for methodology and results against the published C timings.
 
 The five [fuzz targets](fuzz_test.go) cover secret/public key parsing, invariant
 hashing, malformed peers, and generated-key agreement. Normal tests need only

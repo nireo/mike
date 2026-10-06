@@ -317,28 +317,3 @@ func TestAllParameterFieldExponents(t *testing.T) {
 		})
 	}
 }
-
-func BenchmarkParameterSets(b *testing.B) {
-	for _, set := range parameterSets {
-		v := readParameterVectors(b, set)
-		seed := decodeHex(b, v.Keypairs[0].Seed)
-		public := decodeHex(b, v.Keypairs[1].PublicKey)
-		secret := decodeHex(b, v.Keypairs[0].SecretKey)
-		b.Run(set.String()+"/GenerateKey", func(b *testing.B) {
-			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
-				if _, _, err := set.GenerateKey(bytes.NewReader(seed)); err != nil {
-					b.Fatal(err)
-				}
-			}
-		})
-		b.Run(set.String()+"/Exchange", func(b *testing.B) {
-			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
-				if _, err := set.Exchange(public, secret); err != nil {
-					b.Fatal(err)
-				}
-			}
-		})
-	}
-}
