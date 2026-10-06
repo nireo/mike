@@ -1,0 +1,8 @@
+# Local C reference implementation (including its nested Git repository).
+/mike_c/
+
+# Local build and editor artifacts.
+.DS_Store
+*.test
+__pycache__/
+*.pyc
