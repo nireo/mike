@@ -33,7 +33,7 @@ func TestReferenceExchanges(t *testing.T) {
 				t.Fatal(err)
 			}
 			// Check the raw invariants as well as the hashed exchange output.
-			invariants, err := exchangeInvariants(bobPK, aliceSK)
+			invariants, err := defaultParameters.exchangeInvariants(bobPK[:], aliceSK[:])
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -112,27 +112,27 @@ func TestExchangeRejectsInvalidKeys(t *testing.T) {
 	}
 	for _, real := range []uint{0, 1, 2} {
 		var badPK PublicKey
-		fp2Encode(badPK[:], fp2Small(real))
+		defaultParameters.fp2Encode(badPK[:], defaultParameters.fp2Small(real))
 		result, err = Exchange(badPK, sk)
 		if !errors.Is(err, ErrExchange) || result != ([SharedSecretSize]byte{}) {
 			t.Fatalf("invalid curve: %v", err)
 		}
 	}
 	// Canonical, strictly Fp2 curves still need to pass the gluing/order checks.
-	for _, a := range []fp2{{fpSmall(0), fpSmall(1)}, {fpSmall(1), fpSmall(1)}} {
+	for _, a := range []fp2{{defaultParameters.fpSmall(0), defaultParameters.fpSmall(1)}, {defaultParameters.fpSmall(1), defaultParameters.fpSmall(1)}} {
 		var badPK PublicKey
-		fp2Encode(badPK[:], a)
+		defaultParameters.fp2Encode(badPK[:], a)
 		result, err = Exchange(badPK, sk)
 		if !errors.Is(err, ErrExchange) || result != ([SharedSecretSize]byte{}) {
 			t.Fatalf("invalid Fp2 curve: %v", err)
 		}
 	}
 	// An isomorphic curve still must use the protocol's maximal coefficient.
-	re, _ := fpDecode(pk[:FieldElementSize])
-	im, _ := fpDecode(pk[FieldElementSize:])
-	for _, a := range []fp2{fp2Neg(fp2{re, im}), fp2Frob(fp2{re, im})} {
+	re, _ := defaultParameters.fpDecode(pk[:FieldElementSize])
+	im, _ := defaultParameters.fpDecode(pk[FieldElementSize:])
+	for _, a := range []fp2{defaultParameters.fp2Neg(fp2{re, im}), defaultParameters.fp2Frob(fp2{re, im})} {
 		var badPK PublicKey
-		fp2Encode(badPK[:], a)
+		defaultParameters.fp2Encode(badPK[:], a)
 		result, err = Exchange(badPK, sk)
 		if !errors.Is(err, ErrExchange) || result != ([SharedSecretSize]byte{}) {
 			t.Fatalf("non-normalized curve: %v", err)

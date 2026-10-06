@@ -1,11 +1,22 @@
 {
   "parameter_set": "p308_633",
+  "parameters": {
+    "security_bits": 128,
+    "field_bytes": 40,
+    "secret_bits": 228,
+    "chain_length": 228,
+    "hd_margin": 2,
+    "torsion_power": 308,
+    "cofactor": 633
+  },
   "constants": {
     "a0": "def6e76e68069827513779218a11830e5915ea48ae21816ab17e6d720e41de60a5f64591ea3daa10",
     "basis_p": "821354db1ea1337ae966ce69fccfc8a5d377c8869584a1fe0b3f3a3caf2f28b72806b3905941ba24",
     "basis_q": "e84711304605676be01e36d5fccedfa59b2446f3a00fb30fd3c17c779c4feeb21300c9635f95491f",
     "basis_p_minus_q_re": "b5adb2853253cdf2e442829f7c4fd4a5374e073d1b4a2a876f80dbd9a53f0b351e033e7a5ceb0122",
-    "basis_p_minus_q_im": "f36b7f781a1a13e08abe97f8159b6f2f247ce055e4a1ce2e59950af377bcf6baa3670a9bd2d59f11"
+    "basis_p_minus_q_im": "f36b7f781a1a13e08abe97f8159b6f2f247ce055e4a1ce2e59950af377bcf6baa3670a9bd2d59f11",
+    "basis_p_im": "00000000000000000000000000000000000000000000000000000000000000000000000000000000",
+    "basis_q_im": "00000000000000000000000000000000000000000000000000000000000000000000000000000000"
   },
   "keypairs": [
     {

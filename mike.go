@@ -1,121 +1,76 @@
 // SPDX-License-Identifier: Apache-2.0
 
-// Package mike implements MIKE p308_633 key generation, key exchange, and
-// C-compatible wire encodings.
+// Package mike implements key generation, key exchange, and C-compatible wire
+// encodings for all six MIKE parameter sets. The package-level API uses p308_633;
+// ParameterSet methods select the other sets.
 package mike
 
 import (
-	"crypto/rand"
-	"crypto/sha3"
 	"errors"
-	"fmt"
 	"io"
 )
 
-// Sizes for p308_633, from mike_c/src/precomp/ref/p308_633/include/encoded_sizes.h.
+// Sizes for the default p308_633 parameter set.
 const (
-	SecretKeySize        = 29
-	PublicKeySize        = 80
-	SharedSecretSize     = 32
-	FieldElementSize     = 40
-	secretKeyBits        = 228
-	secretKeyChainLength = 228
-	hdMargin             = 2
+	SecretKeySize    = 29
+	PublicKeySize    = 80
+	SharedSecretSize = 32
+	FieldElementSize = 40
 )
 
 var (
-	ErrSecretKey  = errors.New("mike: invalid p308_633 secret key")
-	ErrPublicKey  = errors.New("mike: invalid p308_633 public key encoding")
-	ErrInvariants = errors.New("mike: invalid p308_633 invariant encoding")
+	ErrSecretKey  = errors.New("mike: invalid secret key")
+	ErrPublicKey  = errors.New("mike: invalid public key encoding")
+	ErrInvariants = errors.New("mike: invalid invariant encoding")
 )
 
-// SecretKey is a 228-bit scalar encoded in little-endian order.
-// Generated keys have their low three bits set to 3 and their top four bits clear.
+// SecretKey is a p308_633 scalar in little-endian order. Generated keys have
+// their low three bits set to 3 and their top four bits clear.
 type SecretKey [SecretKeySize]byte
 
-// PublicKey encodes the Montgomery curve coefficient A as real || imaginary,
+// PublicKey encodes the p308_633 curve coefficient A as real || imaginary,
 // with each component a canonical 40-byte little-endian integer modulo p.
 type PublicKey [PublicKeySize]byte
 
 // GenerateKey generates a p308_633 key pair. A nil random uses crypto/rand.Reader.
-// It follows protocols_keygen in mike_c/src/nike/ref/lvlx/keygen.c.
 func GenerateKey(random io.Reader) (PublicKey, SecretKey, error) {
-	if random == nil {
-		random = rand.Reader
-	}
-	var sk SecretKey
-	if _, err := io.ReadFull(random, sk[:]); err != nil {
-		return PublicKey{}, SecretKey{}, fmt.Errorf("mike: read randomness: %w", err)
-	}
-	sk[0] = sk[0]&^7 | 3
-	sk[SecretKeySize-1] &= (1 << (secretKeyBits % 8)) - 1
-	pk, err := PublicKeyFromSecretKey(sk)
+	public, secret, err := P308_633.GenerateKey(random)
 	if err != nil {
 		return PublicKey{}, SecretKey{}, err
 	}
-	return pk, sk, nil
+	return PublicKey(public), SecretKey(secret), nil
 }
 
-// PublicKeyFromSecretKey computes the public key for a valid p308_633 secret key.
-func PublicKeyFromSecretKey(sk SecretKey) (PublicKey, error) {
-	if !validSecretKey(sk) {
-		return PublicKey{}, ErrSecretKey
+// PublicKeyFromSecretKey derives the public key for a valid p308_633 scalar.
+func PublicKeyFromSecretKey(secret SecretKey) (PublicKey, error) {
+	public, err := P308_633.PublicKeyFromSecretKey(secret[:])
+	if err != nil {
+		return PublicKey{}, err
 	}
-	kernel := ecLadder3pt(basisP, basisQ, basisPmQ, sk, curveA24)
-	a, ok := ecIsogeny2Chain(kernel, curveA24, secretKeyChainLength+hdMargin)
-	if !ok {
-		return PublicKey{}, errors.New("mike: curve normalization failed")
-	}
-	var pk PublicKey
-	fp2Encode(pk[:], a)
-	return pk, nil
+	return PublicKey(public), nil
 }
 
-// ParseSecretKey copies a C-format secret key, checking the sampling constraints.
-// This is stricter than the C decoder, which accepts any SECRETKEY_BYTES bytes.
+// ParseSecretKey copies a C-format p308_633 scalar and checks sampling constraints.
 func ParseSecretKey(encoded []byte) (SecretKey, error) {
-	if len(encoded) != SecretKeySize {
-		return SecretKey{}, ErrSecretKey
+	secret, err := P308_633.ParseSecretKey(encoded)
+	if err != nil {
+		return SecretKey{}, err
 	}
-	sk := SecretKey(encoded)
-	if !validSecretKey(sk) {
-		return SecretKey{}, ErrSecretKey
-	}
-	return sk, nil
+	return SecretKey(secret), nil
 }
 
-func validSecretKey(sk SecretKey) bool {
-	return sk[0]&7 == 3 && sk[SecretKeySize-1]>>4 == 0
-}
-
-// ParsePublicKey copies a C-format public key and checks that both field
-// components are canonical. Like public_key_from_bytes in C, this checks only
-// the encoding; it does not check curve membership or supersingularity.
+// ParsePublicKey copies a p308_633 key after checking canonical field encodings.
+// It does not check curve membership or supersingularity.
 func ParsePublicKey(encoded []byte) (PublicKey, error) {
-	if len(encoded) != PublicKeySize {
-		return PublicKey{}, ErrPublicKey
+	public, err := P308_633.ParsePublicKey(encoded)
+	if err != nil {
+		return PublicKey{}, err
 	}
-	if _, err := fpDecode(encoded[:FieldElementSize]); err != nil {
-		return PublicKey{}, ErrPublicKey
-	}
-	if _, err := fpDecode(encoded[FieldElementSize:]); err != nil {
-		return PublicKey{}, ErrPublicKey
-	}
-	return PublicKey(encoded), nil
+	return PublicKey(public), nil
 }
 
-// HashSharedSecret hashes four canonical little-endian field invariants with
-// SHA3-256, matching hash_shared_secret in mike_c/src/nike/ref/lvlx/encode.c.
-// The caller must supply the 160-byte invariant encoding; this function does
-// not compute the invariants or perform a key exchange.
-func HashSharedSecret(encodedInvariants []byte) ([SharedSecretSize]byte, error) {
-	if len(encodedInvariants) != 4*FieldElementSize {
-		return [SharedSecretSize]byte{}, ErrInvariants
-	}
-	for i := 0; i < 4; i++ {
-		if _, err := fpDecode(encodedInvariants[i*FieldElementSize : (i+1)*FieldElementSize]); err != nil {
-			return [SharedSecretSize]byte{}, ErrInvariants
-		}
-	}
-	return sha3.Sum256(encodedInvariants), nil
+// HashSharedSecret hashes the 160-byte p308_633 encoding of four canonical
+// field invariants with SHA3-256. It does not perform a key exchange.
+func HashSharedSecret(encoded []byte) ([SharedSecretSize]byte, error) {
+	return P308_633.HashSharedSecret(encoded)
 }

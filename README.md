@@ -1,7 +1,7 @@
 # MIKE in Go
 
-A port of `mike_c`, implementing **key generation and exchange for p308_633**
-(the smallest, fast parameter set). It keeps the C formulas and isogeny
+A port of `mike_c`, implementing **key generation and exchange for all six
+parameter sets**. It keeps the C formulas and isogeny
 strategy recognizable while using ordinary Go types, errors, and `io.Reader`.
 
 Implemented:
@@ -14,9 +14,10 @@ Implemented:
 - Scholten, diagonal, and Weil gluing, followed by the four-dimensional isogeny chain.
 - Shared invariants and SHA3-256 shared-secret derivation.
 
-The other parameter sets are left for subsequent ports. `Exchange` implements
-the complete `p308_633` protocol path. `HashSharedSecret` remains available for
-hashing separately supplied invariant encodings.
+The package-level functions use `p308_633`. Select another set with
+`ParameterSet` methods; each uses the same protocol formulas with its own
+modulus, basis, scalar length, cofactor, and isogeny-chain lengths.
+`HashSharedSecret` is also available for hashing separately supplied invariants.
 
 ```go
 package main
@@ -29,19 +30,20 @@ import (
 )
 
 func main() {
-    alicePublic, aliceSecret, err := mike.GenerateKey(nil) // crypto/rand.Reader
+    set := mike.P628_317 // Choose the same set for both parties.
+    alicePublic, aliceSecret, err := set.GenerateKey(nil) // crypto/rand.Reader
     if err != nil {
         log.Fatal(err)
     }
-    bobPublic, bobSecret, err := mike.GenerateKey(nil)
+    bobPublic, bobSecret, err := set.GenerateKey(nil)
     if err != nil {
         log.Fatal(err)
     }
-    aliceShared, err := mike.Exchange(bobPublic, aliceSecret)
+    aliceShared, err := set.Exchange(bobPublic, aliceSecret)
     if err != nil {
         log.Fatal(err)
     }
-    bobShared, err := mike.Exchange(alicePublic, bobSecret)
+    bobShared, err := set.Exchange(alicePublic, bobSecret)
     if err != nil {
         log.Fatal(err)
     }
@@ -49,7 +51,29 @@ func main() {
 }
 ```
 
-`SecretKey` and `PublicKey` are fixed-size byte arrays (29 and 80 bytes).
+These methods return keys as byte slices and shared secrets as `[32]byte`.
+They provide `PublicKeyFromSecretKey`, `ParseSecretKey`, `ParsePublicKey`, and
+`HashSharedSecret`, with the same checks as the default API. Parsers return
+independent copies. Invalid `ParameterSet` values return `ErrParameterSet`.
+Each set's context is immutable, so different sets can be used concurrently.
+Keys carry no parameter-set tag; both parties must select the same set.
+
+The security levels below are the C reference's nominal `SECURITY_BITS` values.
+Key and field sizes are in bytes; shared secrets are 32 bytes for every set.
+
+| ParameterSet | Security bits | Secret key | Public key | Field element |
+| --- | ---: | ---: | ---: | ---: |
+| `P308_633` | 128 | 29 | 80 | 40 |
+| `P374_117` | 128 | 47 | 96 | 48 |
+| `P474_593` | 192 | 43 | 122 | 61 |
+| `P566_77` | 192 | 71 | 144 | 72 |
+| `P628_317` | 256 | 57 | 160 | 80 |
+| `P758_41` | 256 | 95 | 192 | 96 |
+
+Call `set.SecurityBits()`, `set.SecretKeySize()`, `set.PublicKeySize()`, or
+`set.FieldElementSize()` to obtain these values. `set.String()` returns its C name.
+
+The default `SecretKey` and `PublicKey` are fixed-size byte arrays (29 and 80 bytes).
 `ParseSecretKey` checks the scalar constraints enforced by C key generation;
 the C secret decoder itself does not check these constraints.
 `ParsePublicKey` checks canonical field encodings, matching the C decoder. It
@@ -67,8 +91,9 @@ Prime-field arithmetic uses the locally included pure Go implementation of
 [`filippo.io/bigmod` v0.1.0](https://github.com/FiloSottile/bigmod/tree/v0.1.0),
 an extraction of Go's `crypto/internal/fips140/bigmod`. Its arithmetic is kept
 unchanged; the assembly files are omitted and the Go backend is always enabled.
-See [the provenance note](internal/bigmod/README.md). The small Fp2 wrappers
-follow the C formulas and delegate modular arithmetic to bigmod. Randomness,
+See [the provenance note](internal/bigmod/README.md). `math/big` is used only
+during initialization of public moduli and fixed exponents. The small Fp2
+wrappers follow the C formulas and delegate modular arithmetic to bigmod. Randomness,
 SHA3-256, and conditional selection use the standard library. There are no
 external module dependencies, cgo, or assembly files in the Go implementation.
 
@@ -76,11 +101,11 @@ The main source mapping is:
 
 | Go | C reference |
 | --- | --- |
-| `mike.go` | `nike/ref/lvlx/keygen.c`, `encode.c` |
+| `mike.go`, `parameter_set.go` | `nike/ref/lvlx/keygen.c`, `encode.c` |
 | `fp.go` | wrappers around bigmod; Fp2 formulas from `gf/ref/lvlx/fp2.c` |
 | `ec.go` | key-generation functions in `ec/ref/lvlx/ec.c`, `isog_chains.c` |
 | `normalize.go` | `ec/ref/lvlx/normalize.c` |
-| `params.go` | canonical values from `precomp/ref/p308_633` |
+| `params.go`, `params_generated.go` | public moduli and canonical basis values from all six `precomp/ref` sets |
 | `exchange.go` | `nike/ref/lvlx/exchange.c`, `weil/ref/lvlx/mike_dim4_chain.c` |
 | `ec_jacobian.go`, `basis.go` | exchange operations in `ec/ref/lvlx/ec.c`, `basis.c`, and `weil/ref/lvlx/bases.c` |
 | `fp_exchange.go` | square-root and projective-inversion formulas from `gf/ref/lvlx` |
@@ -95,17 +120,19 @@ go test -race ./...
 go test -run '^$' -bench . -benchmem
 ```
 
-Tests include eight key-pair vectors and six exchange vectors generated by the
-C reference, checking both raw invariants and final shared secrets in both
-directions. They also cover fresh-key agreement, scalar sampling boundaries,
+Tests include eight key-pair vectors and six exchange vectors **for each set**,
+generated by the C reference, checking raw invariants and final shared secrets
+in both directions. They also cover fresh-key agreement for all sets, concurrent
+use of different sets, mixed-set key rejection, scalar sampling boundaries,
 invalid encodings and curves, partial/failing random readers, field checks
-against `math/big`, and the C shared-invariant hash. Normal tests require only
-Go. Fuzzing is deferred.
+against `math/big` for every modulus, and the C shared-invariant hash. Normal
+tests require only Go. Fuzzing is deferred.
 
 To regenerate the vectors from the checked-in C source (Python 3 and clang):
 
 ```sh
 python3 testdata/generate_vectors.py
+gofmt -w params_generated.go
 ```
 
 The generator corrects the C ladder's mismatched `void` return type to `int`

@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Regenerate p308_633 vectors with the supplied C reference (requires clang).
+"""Regenerate all parameter sets and vectors with the C reference (needs clang).
 
 The C ec_ladder3pt definition incorrectly says void despite its int declaration
 and return values. Only that return type is corrected in the temporary copy.
 No reference source files are modified. Normal Go tests need neither C nor Python.
 """
+import argparse
 import hashlib
 import json
 from pathlib import Path
@@ -14,6 +15,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 C = ROOT / "mike_c"
+SETS = ["p308_633", "p374_117", "p474_593", "p566_77", "p628_317", "p758_41"]
 
 
 def functions(path, names):
@@ -80,6 +82,10 @@ int main(int argc, char **argv) {
     }
     hash_shared_secret(buf, &shared);
     print_hex(buf, SHARED_BYTES);
+    fp_encode(buf, &BASIS_sk_PX.im);
+    print_hex(buf, FP_ENCODED_BYTES);
+    fp_encode(buf, &BASIS_sk_QX.im);
+    print_hex(buf, FP_ENCODED_BYTES);
     if (argc == 3) {
         unsigned char peer_bytes[PUBLICKEY_BYTES];
         if (strlen(argv[2]) != 2 * sizeof(peer_bytes)) return 1;
@@ -103,16 +109,21 @@ int main(int argc, char **argv) {
 '''
 
 
-def main():
+def generate(name):
+    precomp = C / f"src/precomp/ref/{name}"
+    sizes = {k: int(v) for k, v in re.findall(r"#define (\w+) (\d+)",
+                                             (precomp / "include/encoded_sizes.h").read_text())}
+    torsion, cofactor = map(int, name[1:].split("_"))
+    secret_size = sizes["SECRETKEY_BYTES"]
     includes = ["include", "src/common/generic/include", "src/gf/ref/include",
-                "src/precomp/ref/p308_633/include", "src/ec/ref/include",
+                f"src/precomp/ref/{name}/include", "src/ec/ref/include",
                 "src/theta/ref/include", "src/weil/ref/include", "src/nike/ref/include"]
-    sources = ["src/gf/ref/p308_633/fp_p308_633.c", "src/gf/ref/lvlx/fp.c",
-               "src/gf/ref/lvlx/fp2.c", "src/precomp/ref/p308_633/constants.c",
-               "src/precomp/ref/p308_633/e0_basis.c", "src/ec/ref/lvlx/normalize.c",
+    sources = [f"src/gf/ref/{name}/fp_{name}.c", "src/gf/ref/lvlx/fp.c",
+               "src/gf/ref/lvlx/fp2.c", f"src/precomp/ref/{name}/constants.c",
+               f"src/precomp/ref/{name}/e0_basis.c", "src/ec/ref/lvlx/normalize.c",
                "src/nike/ref/lvlx/keygen.c", "src/nike/ref/lvlx/encode.c",
                "src/common/generic/fips202.c", "src/ec/ref/lvlx/basis.c",
-               "src/precomp/ref/p308_633/ec_params.c", "src/nike/ref/lvlx/exchange.c"]
+               f"src/precomp/ref/{name}/ec_params.c", "src/nike/ref/lvlx/exchange.c"]
     sources += [str(p.relative_to(C)) for module in ["theta", "weil"]
                 for p in sorted((C / f"src/{module}/ref/lvlx").glob("*.c"))]
     selected = (C / "src/ec/ref/lvlx/ec.c").read_text()
@@ -121,8 +132,13 @@ def main():
     selected += "\n" + functions("src/ec/ref/lvlx/isog_chains.c", [
         "ec_xDBL_A24", "ec_iso_xisog_4", "ec_iso_xeval_4",
         "ec_iso_isogeny_2chain_with_strategy", "ec_iso_isogeny_2chain"])
-    seeds = [bytes(29), bytes([255])*29, bytes(range(29))]
-    seeds += [hashlib.sha256(f"MIKE Go vector {i}".encode()).digest()[:29] for i in range(5)]
+    seeds = [bytes(secret_size), bytes([255])*secret_size, bytes(range(secret_size))]
+    for i in range(5):
+        tag = f"MIKE Go vector {i}".encode()
+        seed = hashlib.sha256(tag).digest()
+        for j in range(1, (secret_size + 31) // 32):
+            seed += hashlib.sha256(tag + f" block {j}".encode()).digest()
+        seeds.append(seed[:secret_size])
     vectors = []
     exchanges = []
     with tempfile.TemporaryDirectory(prefix="mike-vectors-") as temp:
@@ -143,16 +159,47 @@ def main():
                                              vectors[bob]["public_key"]], text=True).splitlines()
             reverse = subprocess.check_output([str(temp / "oracle"), seeds[bob].hex(),
                                                vectors[alice]["public_key"]], text=True).splitlines()
-            if lines[12:] != reverse[12:]:
+            if lines[14:] != reverse[14:]:
                 raise ValueError("C reference parties disagree")
-            exchanges.append({"alice": alice, "bob": bob, "invariants": "".join(lines[12:16]),
-                              "shared_secret": lines[16]})
+            exchanges.append({"alice": alice, "bob": bob, "invariants": "".join(lines[14:18]),
+                              "shared_secret": lines[18]})
     lines = constants_lines
-    output = {"parameter_set": "p308_633", "constants": dict(zip(
+    metadata = {"security_bits": sizes["SECURITY_BITS"], "field_bytes": sizes["FP_ENCODED_BYTES"],
+                "secret_bits": sizes["SECRETKEY_BITS"], "chain_length": sizes["SECRETKEY_CHAIN_LENGTH"],
+                "hd_margin": sizes["HD_MARGIN"], "torsion_power": torsion, "cofactor": cofactor}
+    output = {"parameter_set": name, "parameters": metadata, "constants": dict(zip(
         ["a0", "basis_p", "basis_q", "basis_p_minus_q_re", "basis_p_minus_q_im"], lines[:5])),
         "keypairs": vectors, "invariants": "".join(lines[7:11]), "shared_hash": lines[11],
         "exchanges": exchanges}
-    (ROOT / "testdata/p308_633.json").write_text(json.dumps(output, indent=2) + "\n")
+    output["constants"].update(basis_p_im=lines[12], basis_q_im=lines[13])
+    (ROOT / f"testdata/{name}.json").write_text(json.dumps(output, indent=2) + "\n")
+    print(f"Generated {name}: 8 key pairs, 6 exchanges", flush=True)
+
+
+def generate_go_constants():
+    lines = ["// SPDX-License-Identifier: Apache-2.0", "",
+             "// Code generated by testdata/generate_vectors.py; DO NOT EDIT.", "", "package mike", "",
+             "var allParameters = [...]*parameters{"]
+    for name in SETS:
+        vector = json.loads((ROOT / f"testdata/{name}.json").read_text())
+        p = vector["parameters"]
+        args = [json.dumps(name)] + [str(p[k]) for k in ["security_bits", "field_bytes", "secret_bits",
+                                                       "chain_length", "hd_margin", "torsion_power", "cofactor"]]
+        lines.append("\tnewParameters(" + ", ".join(args) + ",")
+        for key in ["a0", "basis_p", "basis_p_im", "basis_q", "basis_q_im", "basis_p_minus_q_re", "basis_p_minus_q_im"]:
+            lines.append("\t\t" + json.dumps(vector["constants"][key]) + ",")
+        lines.append("\t),")
+    lines.append("}")
+    (ROOT / "params_generated.go").write_text("\n".join(lines) + "\n")
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("sets", nargs="*", choices=SETS)
+    args = parser.parse_args()
+    for name in args.sets or SETS:
+        generate(name)
+    generate_go_constants()
 
 
 if __name__ == "__main__":

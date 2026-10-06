@@ -2,24 +2,72 @@
 
 package mike
 
-// Canonical little-endian values of A0 and BASIS_sk_* from the C precomputation.
-// Unlike the C limb arrays, these are independent of radix and Montgomery form.
-// Regenerate with testdata/generate_vectors.py; see testdata/p308_633.json.
-var (
-	curveA   = fp2{mustFP("def6e76e68069827513779218a11830e5915ea48ae21816ab17e6d720e41de60a5f64591ea3daa10"), fpSmall(0)}
-	curveA24 = fp2Mul(fp2Add(curveA, fp2Small(2)), fp2Inv(fp2Small(4)))
-	basisP   = ecPoint{fp2{mustFP("821354db1ea1337ae966ce69fccfc8a5d377c8869584a1fe0b3f3a3caf2f28b72806b3905941ba24"), fpSmall(0)}, fp2Small(1)}
-	basisQ   = ecPoint{fp2{mustFP("e84711304605676be01e36d5fccedfa59b2446f3a00fb30fd3c17c779c4feeb21300c9635f95491f"), fpSmall(0)}, fp2Small(1)}
-	basisPmQ = ecPoint{fp2{
-		mustFP("b5adb2853253cdf2e442829f7c4fd4a5374e073d1b4a2a876f80dbd9a53f0b351e033e7a5ceb0122"),
-		mustFP("f36b7f781a1a13e08abe97f8159b6f2f247ce055e4a1ce2e59950af377bcf6baa3670a9bd2d59f11"),
-	}, fp2Small(1)}
+import (
+	"math/big"
+	"math/bits"
+	"slices"
+
+	"github.com/nireo/mike/internal/bigmod"
 )
 
-func mustFP(s string) fp {
-	x, err := fpDecode(mustHex(s))
+const maxPublicKeySize = 192
+
+// parameters contains immutable, public data for one parameter set. Every
+// arithmetic operation uses this context; there is no mutable active modulus.
+type parameters struct {
+	name                                               string
+	securityBits, fieldBytes, secretBytes, publicBytes int
+	secretBits, chainLength, hdMargin, torsionPower    int
+
+	cofactorLE   []byte
+	cofactorBits int
+	primeBytes   []byte
+	prime        *bigmod.Modulus
+
+	inverseExponent, sqrtExponent, progenitorExponent, legendreExponent []byte
+	inverseTwo                                                          fp
+
+	curveA, curveA24         fp2
+	basisP, basisQ, basisPmQ ecPoint
+}
+
+// math/big is used only to initialize public moduli and fixed exponents.
+// Secret field operations use the pure Go bigmod backend throughout.
+func newParameters(name string, securityBits, fieldBytes, secretBits, chainLength, hdMargin, torsionPower, cofactor int,
+	a0, pxRe, pxIm, qxRe, qxIm, pmqxRe, pmqxIm string) *parameters {
+	p := new(big.Int).Lsh(big.NewInt(int64(cofactor)), uint(torsionPower))
+	p.Sub(p, big.NewInt(1))
+	f := &parameters{
+		name: name, securityBits: securityBits, fieldBytes: fieldBytes,
+		secretBytes: (secretBits + 7) / 8, publicBytes: 2 * fieldBytes,
+		secretBits: secretBits, chainLength: chainLength, hdMargin: hdMargin, torsionPower: torsionPower,
+		cofactorBits: bits.Len(uint(cofactor)), primeBytes: p.Bytes(),
+	}
+	f.prime = mustModulus(f.primeBytes)
+	f.cofactorLE = big.NewInt(int64(cofactor)).Bytes()
+	slices.Reverse(f.cofactorLE)
+	f.inverseExponent = new(big.Int).Sub(p, big.NewInt(2)).Bytes()
+	f.sqrtExponent = new(big.Int).Rsh(new(big.Int).Add(p, big.NewInt(1)), 2).Bytes()
+	f.progenitorExponent = new(big.Int).Rsh(new(big.Int).Sub(p, big.NewInt(3)), 2).Bytes()
+	f.legendreExponent = new(big.Int).Rsh(new(big.Int).Sub(p, big.NewInt(1)), 1).Bytes()
+	f.inverseTwo = new(bigmod.Nat)
+	if _, err := f.inverseTwo.SetBytes(new(big.Int).Rsh(new(big.Int).Add(p, big.NewInt(1)), 1).Bytes(), f.prime); err != nil {
+		panic(err)
+	}
+	f.curveA = fp2{f.mustFP(a0), f.fpSmall(0)}
+	f.curveA24 = f.fp2Half(f.fp2Half(f.fp2Add(f.curveA, f.fp2Small(2))))
+	f.basisP = ecPoint{fp2{f.mustFP(pxRe), f.mustFP(pxIm)}, f.fp2Small(1)}
+	f.basisQ = ecPoint{fp2{f.mustFP(qxRe), f.mustFP(qxIm)}, f.fp2Small(1)}
+	f.basisPmQ = ecPoint{fp2{f.mustFP(pmqxRe), f.mustFP(pmqxIm)}, f.fp2Small(1)}
+	return f
+}
+
+func (f *parameters) mustFP(s string) fp {
+	x, err := f.fpDecode(mustHex(s))
 	if err != nil {
 		panic(err)
 	}
 	return x
 }
+
+var defaultParameters = allParameters[P308_633]

@@ -32,7 +32,12 @@ type referenceVectors struct {
 
 func readVectors(t testing.TB) referenceVectors {
 	t.Helper()
-	b, err := os.ReadFile("testdata/p308_633.json")
+	return readParameterVectors(t, P308_633)
+}
+
+func readParameterVectors(t testing.TB, set ParameterSet) referenceVectors {
+	t.Helper()
+	b, err := os.ReadFile("testdata/" + set.String() + ".json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +45,7 @@ func readVectors(t testing.TB) referenceVectors {
 	if err := json.Unmarshal(b, &vectors); err != nil {
 		t.Fatal(err)
 	}
-	if vectors.ParameterSet != "p308_633" || len(vectors.Keypairs) != 8 {
+	if vectors.ParameterSet != set.String() || len(vectors.Keypairs) != 8 || len(vectors.Exchanges) != 6 {
 		t.Fatal("unexpected reference vectors")
 	}
 	return vectors
@@ -93,12 +98,12 @@ func TestReferenceKeypairs(t *testing.T) {
 func TestReferenceConstants(t *testing.T) {
 	v := readVectors(t)
 	constants := map[string]fp{
-		"a0": curveA.re, "basis_p": basisP.x.re, "basis_q": basisQ.x.re,
-		"basis_p_minus_q_re": basisPmQ.x.re, "basis_p_minus_q_im": basisPmQ.x.im,
+		"a0": defaultParameters.curveA.re, "basis_p": defaultParameters.basisP.x.re, "basis_q": defaultParameters.basisQ.x.re,
+		"basis_p_minus_q_re": defaultParameters.basisPmQ.x.re, "basis_p_minus_q_im": defaultParameters.basisPmQ.x.im,
 	}
 	for name, x := range constants {
 		var encoded [FieldElementSize]byte
-		fpEncode(encoded[:], x)
+		defaultParameters.fpEncode(encoded[:], x)
 		if got := hex.EncodeToString(encoded[:]); got != v.Constants[name] {
 			t.Fatalf("constant %s: %s", name, got)
 		}
@@ -144,7 +149,7 @@ func TestGenerateKeyDefaultRandomness(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !validSecretKey(sk) {
+	if !defaultParameters.validSecretKey(sk[:]) {
 		t.Fatal("sampling constraints not satisfied")
 	}
 	if _, err := ParsePublicKey(pk[:]); err != nil {
@@ -194,7 +199,7 @@ func TestSecretKeyValidation(t *testing.T) {
 }
 
 func TestCanonicalEncodings(t *testing.T) {
-	p := slices.Clone(primeBytes)
+	p := slices.Clone(defaultParameters.primeBytes)
 	slices.Reverse(p)
 	for _, length := range []int{0, PublicKeySize - 1, PublicKeySize + 1} {
 		if _, err := ParsePublicKey(make([]byte, length)); !errors.Is(err, ErrPublicKey) {
