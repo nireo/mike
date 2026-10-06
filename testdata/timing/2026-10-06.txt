@@ -1,0 +1,90 @@
+2026-10-06; Go 1.27.0 darwin/arm64
+Reviewed revision: 8a43e48880b40b3264e1e4b3b332ca1215ab6184
+GOMAXPROCS=1; OS thread locked; GC enabled; no race/coverage/fuzz instrumentation.
+Class 0/1: sparse/random valid scalar for keygen/exchange, zero/p-1 for mul, choice 0/1 for select.
+Each exchange uses the same reference peer (keypair 0) for its parameter set.
+Primitives use batches of 64; mean_ns is elapsed time divided by 64.
+Raw Welch t is (mean0-mean1)/sqrt(var0/n0+var1/n1). Not a CI pass threshold.
+Go crypto/subtle TestWithDataIndependentTiming passed without skipping.
+
+Whole-operation pilot (32 samples per class)
+p308_633/keygen: n=32/32 batch=1 mean_ns=5891001.3/6307674.5 raw_t=-0.974
+p308_633/exchange: n=32/32 batch=1 mean_ns=46375032.5/46431010.3 raw_t=-0.084
+p308_633/mul: n=32/32 batch=64 mean_ns=95.6/106.6 raw_t=-11.271
+p308_633/select: n=32/32 batch=64 mean_ns=13.8/14.6 raw_t=-1.267
+p374_117/keygen: n=32/32 batch=1 mean_ns=10647272.2/10659716.2 raw_t=-0.615
+p374_117/exchange: n=32/32 batch=1 mean_ns=91461729.1/89530115.9 raw_t=1.789
+p374_117/mul: n=32/32 batch=64 mean_ns=117.4/143.9 raw_t=-2.555
+p374_117/select: n=32/32 batch=64 mean_ns=13.8/14.0 raw_t=-0.906
+p474_593/keygen: n=32/32 batch=1 mean_ns=12781604.2/12761399.7 raw_t=0.110
+p474_593/exchange: n=32/32 batch=1 mean_ns=105813808.5/107701079.5 raw_t=-1.081
+p474_593/mul: n=32/32 batch=64 mean_ns=170.3/181.1 raw_t=-18.557
+p474_593/select: n=32/32 batch=64 mean_ns=31.3/30.8 raw_t=0.330
+p566_77/keygen: n=32/32 batch=1 mean_ns=25558139.4/25521697.9 raw_t=0.358
+p566_77/exchange: n=32/32 batch=1 mean_ns=214272597.7/212905145.8 raw_t=0.534
+p566_77/mul: n=32/32 batch=64 mean_ns=202.1/214.5 raw_t=-13.835
+p566_77/select: n=32/32 batch=64 mean_ns=18.2/18.1 raw_t=0.202
+p628_317/keygen: n=32/32 batch=1 mean_ns=22338303.4/22254433.6 raw_t=0.476
+p628_317/exchange: n=32/32 batch=1 mean_ns=184922507.9/182786382.8 raw_t=0.927
+p628_317/mul: n=32/32 batch=64 mean_ns=245.4/245.5 raw_t=-0.006
+p628_317/select: n=32/32 batch=64 mean_ns=20.1/20.5 raw_t=-0.492
+p758_41/keygen: n=32/32 batch=1 mean_ns=48529839.9/49101427.3 raw_t=-0.796
+p758_41/exchange: n=32/32 batch=1 mean_ns=380480940.1/380047704.3 raw_t=0.326
+p758_41/mul: n=32/32 batch=64 mean_ns=294.2/306.1 raw_t=-25.363
+p758_41/select: n=32/32 batch=64 mean_ns=21.8/42.3 raw_t=-1.119
+
+Primitives without DIT wrapper, run 1
+p308_633/mul: n=10000/10000 batch=64 mean_ns=133.0/144.3 raw_t=-5.089
+p308_633/select: n=10000/10000 batch=64 mean_ns=32.3/31.4 raw_t=0.876
+p374_117/mul: n=10000/10000 batch=64 mean_ns=131.0/148.1 raw_t=-16.689
+p374_117/select: n=10000/10000 batch=64 mean_ns=32.9/33.1 raw_t=-0.226
+p474_593/mul: n=10000/10000 batch=64 mean_ns=194.0/204.6 raw_t=-8.640
+p474_593/select: n=10000/10000 batch=64 mean_ns=37.7/37.5 raw_t=0.235
+p566_77/mul: n=10000/10000 batch=64 mean_ns=226.5/239.6 raw_t=-9.132
+p566_77/select: n=10000/10000 batch=64 mean_ns=40.5/40.7 raw_t=-0.219
+p628_317/mul: n=10000/10000 batch=64 mean_ns=255.9/270.1 raw_t=-9.953
+p628_317/select: n=10000/10000 batch=64 mean_ns=43.1/41.0 raw_t=1.667
+p758_41/mul: n=10000/10000 batch=64 mean_ns=324.0/337.9 raw_t=-8.902
+p758_41/select: n=10000/10000 batch=64 mean_ns=45.7/47.5 raw_t=-1.333
+
+Primitives with DIT wrapper, run 1
+p308_633/mul: n=10000/10000 batch=64 mean_ns=135.9/137.6 raw_t=-1.356
+p308_633/select: n=10000/10000 batch=64 mean_ns=34.6/34.5 raw_t=0.054
+p374_117/mul: n=10000/10000 batch=64 mean_ns=209.2/198.9 raw_t=0.525
+p374_117/select: n=10000/10000 batch=64 mean_ns=36.7/35.9 raw_t=0.659
+p474_593/mul: n=10000/10000 batch=64 mean_ns=227.6/228.0 raw_t=-0.254
+p474_593/select: n=10000/10000 batch=64 mean_ns=39.5/39.9 raw_t=-0.333
+p566_77/mul: n=10000/10000 batch=64 mean_ns=268.1/267.0 raw_t=0.596
+p566_77/select: n=10000/10000 batch=64 mean_ns=42.4/44.8 raw_t=-1.756
+p628_317/mul: n=10000/10000 batch=64 mean_ns=281.7/285.0 raw_t=-1.850
+p628_317/select: n=10000/10000 batch=64 mean_ns=45.2/42.8 raw_t=1.738
+p758_41/mul: n=10000/10000 batch=64 mean_ns=372.6/371.9 raw_t=0.301
+p758_41/select: n=10000/10000 batch=64 mean_ns=52.0/49.5 raw_t=1.177
+
+Primitives without DIT wrapper, run 2
+p308_633/mul: n=10000/10000 batch=64 mean_ns=116.1/128.4 raw_t=-10.086
+p308_633/select: n=10000/10000 batch=64 mean_ns=33.7/32.3 raw_t=1.245
+p374_117/mul: n=10000/10000 batch=64 mean_ns=130.7/147.6 raw_t=-14.674
+p374_117/select: n=10000/10000 batch=64 mean_ns=32.1/33.9 raw_t=-1.623
+p474_593/mul: n=10000/10000 batch=64 mean_ns=191.0/204.5 raw_t=-10.189
+p474_593/select: n=10000/10000 batch=64 mean_ns=34.7/34.4 raw_t=0.137
+p566_77/mul: n=10000/10000 batch=64 mean_ns=225.5/239.5 raw_t=-9.605
+p566_77/select: n=10000/10000 batch=64 mean_ns=40.8/41.3 raw_t=-0.423
+p628_317/mul: n=10000/10000 batch=64 mean_ns=254.9/268.9 raw_t=-9.730
+p628_317/select: n=10000/10000 batch=64 mean_ns=42.0/41.0 raw_t=0.795
+p758_41/mul: n=10000/10000 batch=64 mean_ns=322.0/338.3 raw_t=-11.293
+p758_41/select: n=10000/10000 batch=64 mean_ns=48.9/48.9 raw_t=-0.039
+
+Primitives with DIT wrapper, run 2
+p308_633/mul: n=10000/10000 batch=64 mean_ns=136.5/139.2 raw_t=-2.259
+p308_633/select: n=10000/10000 batch=64 mean_ns=33.0/34.5 raw_t=-1.261
+p374_117/mul: n=10000/10000 batch=64 mean_ns=155.5/157.1 raw_t=-1.259
+p374_117/select: n=10000/10000 batch=64 mean_ns=34.0/34.0 raw_t=-0.011
+p474_593/mul: n=10000/10000 batch=64 mean_ns=219.1/220.9 raw_t=-1.191
+p474_593/select: n=10000/10000 batch=64 mean_ns=38.5/37.5 raw_t=0.842
+p566_77/mul: n=10000/10000 batch=64 mean_ns=255.1/255.7 raw_t=-0.320
+p566_77/select: n=10000/10000 batch=64 mean_ns=43.6/42.4 raw_t=0.853
+p628_317/mul: n=10000/10000 batch=64 mean_ns=280.4/283.8 raw_t=-1.869
+p628_317/select: n=10000/10000 batch=64 mean_ns=42.8/43.1 raw_t=-0.246
+p758_41/mul: n=10000/10000 batch=64 mean_ns=349.5/348.8 raw_t=0.504
+p758_41/select: n=10000/10000 batch=64 mean_ns=45.8/45.4 raw_t=0.221
