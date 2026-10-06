@@ -1,4 +1,4 @@
-# MIKE in Go
+# mike: Module Isogeny Key-Exchange
 
 A port of `mike_c`, implementing **key generation and exchange for all six
 parameter sets**. It keeps the C formulas and isogeny
@@ -126,7 +126,36 @@ in both directions. They also cover fresh-key agreement for all sets, concurrent
 use of different sets, mixed-set key rejection, scalar sampling boundaries,
 invalid encodings and curves, partial/failing random readers, field checks
 against `math/big` for every modulus, and the C shared-invariant hash. Normal
-tests require only Go. Fuzzing is deferred.
+tests require only Go and also run the fuzz seed corpora as regression tests.
+
+Five native Go fuzz targets cover all six parameter sets:
+
+- `FuzzParseSecretKey`: scalar constraints, invalid sets, and independent copies.
+- `FuzzParsePublicKey`: canonical encoding checked against an integer oracle.
+- `FuzzHashSharedSecret`: invariant encoding, hashing, and zero results on error.
+- `FuzzExchange`: arbitrary peer encodings with a valid fixed secret, including
+  ordinary and non-normalized curves, input preservation, and zero results on error.
+- `FuzzKeyExchangeAgreement`: key generation, public-key derivation, and agreement
+  from mutated entropy, with C vector comparisons whenever a reference seed or
+  key pair is reproduced.
+
+The corpora include C vectors, zero and maximal scalars, field boundaries,
+incorrect lengths, and invalid parameter-set values. The agreement target pads
+or truncates entropy to the selected key size so mutations keep reaching valid
+exchanges. The exchange target keeps the secret valid so mutations reach peer
+validation. Fuzz tests use committed fixtures and require no C compiler.
+
+Run one target at a time; for example:
+
+```sh
+go test -run '^$' -fuzz '^FuzzExchange$' -fuzztime 30s -parallel 2 -timeout 5m
+go test -run '^$' -fuzz '^FuzzKeyExchangeAgreement$' -fuzztime 30s -parallel 2 -timeout 5m
+```
+
+Replace the target name to run the parser or hash targets. Exchange targets are
+substantially more expensive, so keep worker counts small. Go saves failing
+inputs under `testdata/fuzz/<target>`; keep those files as regression cases.
+Longer fuzz campaigns can use `-fuzztime 10m` with a suitably larger `-timeout`.
 
 To regenerate the vectors from the checked-in C source (Python 3 and clang):
 
