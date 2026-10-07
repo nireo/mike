@@ -1,7 +1,11 @@
-# mike: Module Isogeny Key-Exchange
+# mike: module isogeny key-exchange
 
-Pure Go key generation and exchange for all six MIKE parameter sets, with
-C-compatible encodings and formulas that follow `mike_c`. Requires Go 1.27.
+MIKE (Module Isogeny Key-Exchange) is a key-agreement scheme based on
+elliptic-curve isogenies: parties exchange public keys and independently derive
+the same shared secret. This package provides pure Go key generation and
+exchange for all six MIKE parameter sets.
+
+Requires Go 1.27.
 
 ```go
 package main
@@ -57,13 +61,10 @@ shared secrets are 32 bytes for every set.
 | `P628_317` | 256 | 57 | 160 | 80 |
 | `P758_41` | 256 | 95 | 192 | 96 |
 
-Fields use vendored pure Go [bigmod](internal/bigmod/README.md). `math/big` is
-used only to initialize public parameters; randomness, SHA3-256, and conditional
-selection use the standard library. No cgo, assembly, or external module dependencies.
-Field temporaries use fixed-size stack storage and remain in Montgomery form
-between multiplications.
-
-See the [timing review](TIMING_REVIEW.md) for findings and remaining timing risks.
+Fields use vendored pure Go bigmod. `math/big` is used only to initialize public
+parameters; randomness, SHA3-256, and conditional selection use the standard
+library. No cgo, assembly, or external module dependencies. Field temporaries use
+fixed-size stack storage and remain in Montgomery form between multiplications.
 
 Tests cover C vectors for every set, agreement, invalid keys, field arithmetic,
 and fuzz seed corpora. Run tests, benchmarks, or one fuzz target at a time:
@@ -75,8 +76,7 @@ go test -run '^$' -bench '^BenchmarkParameterSets(DIT)?$' -benchmem -cpu 1 -coun
 go test -run '^$' -fuzz '^FuzzExchange$' -fuzztime 30s -parallel 2 -timeout 5m
 ```
 
-Benchmarks cover all sets; see the [performance comparison](benchmarks/README.md)
-for methodology and results against the published C timings.
+Benchmarks cover all sets, with results compared against the published C timings.
 
 The five [fuzz targets](fuzz_test.go) cover secret/public key parsing, invariant
 hashing, malformed peers, and generated-key agreement. Normal tests need only
