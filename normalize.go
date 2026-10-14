@@ -38,9 +38,10 @@ func (f *parameters) ecNormalizeMontgomery(th ecPoint) (fp2, bool) {
 	// Batch inversion, matching fp2_batched_inv: one prime-field exponentiation.
 	product01 := f.fp2Mul(mont[0].z, mont[1].z)
 	product := f.fp2Mul(product01, mont[2].z)
-	if f.fp2IsZero(product) {
-		return fp2{}, false
-	}
+	valid := 1 - f.fp2ZeroChoice(product)
+	// Inversion maps zero to zero, so finish the same arithmetic for invalid
+	// public theta points. Key generation's full-order kernel guarantees
+	// validity; see ecIsogeny2Chain.
 	inverse := f.fp2Inv(product)
 	denominators := [3]fp2{
 		f.fp2Mul(f.fp2Mul(inverse, mont[2].z), mont[1].z),
@@ -59,5 +60,5 @@ func (f *parameters) ecNormalizeMontgomery(th ecPoint) (fp2, bool) {
 	for _, a := range coefficients[1:] {
 		max = f.fp2Select(max, a, f.ecFP2LessThan(max, a))
 	}
-	return max, true
+	return max, valid == 1
 }

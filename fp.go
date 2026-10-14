@@ -103,6 +103,20 @@ func (f *parameters) fpSelect(x, y fp, choice int) fp {
 	return z
 }
 
+// fpEncodingCanonical returns 1 for an encoding strictly below p. For the
+// public field length, the subtraction visits every byte even on invalid input.
+func (f *parameters) fpEncodingCanonical(b []byte) int {
+	if len(b) != f.fieldBytes {
+		return 0
+	}
+	var borrow uint16
+	for i, value := range b {
+		difference := uint16(value) - uint16(f.primeLE[i]) - borrow
+		borrow = difference >> 15
+	}
+	return int(borrow)
+}
+
 func (f *parameters) fpDecode(b []byte) (fp, error) {
 	if len(b) != f.fieldBytes {
 		return fp{}, ErrPublicKey

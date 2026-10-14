@@ -86,7 +86,16 @@ func (f *parameters) ecEval4(q ecPoint, k [3]fp2) ecPoint {
 // ecIsogeny2Chain maps to ec_iso_isogeny_2chain_with_strategy with normalize=2.
 // The split stack preserves the C strategy. The last degree-4 step is implicit
 // in ecNormalizeMontgomery, exactly as in the reference implementation.
-func (f *parameters) ecIsogeny2Chain(kernel ecPoint, a24 fp2, length int) (fp2, bool) {
+//
+// This is used only for key generation from the fixed basis P,Q and an odd
+// scalar s. P,Q have exact order 2^length, with Q2=(0,0) and P2 distinct.
+// Thus P+sQ has full order and its cyclic subgroup does not contain (0,0).
+// Each degree-4 quotient preserves the distinguished point (0,0), outside
+// the remaining kernel. The final point has order 4 and does not double to
+// (0,0); consequently X,Z and X^4-Z^4 are nonzero. The normalization
+// denominator product is -64*i*X^2*Z^2*(X^4-Z^4)^2, so it cannot vanish.
+// TestKeyGenerationBasisTorsion checks the public basis assumptions for all sets.
+func (f *parameters) ecIsogeny2Chain(kernel ecPoint, a24 fp2, length int) fp2 {
 	// The balanced strategy uses ceil(log2(length))+1 stack slots.
 	var splits [maxIsogenyDepth]ecPoint
 	var todo [maxIsogenyDepth]int
@@ -111,5 +120,6 @@ func (f *parameters) ecIsogeny2Chain(kernel ecPoint, a24 fp2, length int) (fp2, 
 		}
 		current--
 	}
-	return f.ecNormalizeMontgomery(splits[0])
+	affine, _ := f.ecNormalizeMontgomery(splits[0])
+	return affine
 }

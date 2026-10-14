@@ -5,6 +5,7 @@ package mike
 import (
 	"crypto/rand"
 	"crypto/sha3"
+	"crypto/subtle"
 	"errors"
 	"fmt"
 	"io"
@@ -98,11 +99,17 @@ func (set ParameterSet) GenerateKey(random io.Reader) (public, secret []byte, er
 }
 
 func (f *parameters) validSecretKey(secret []byte) bool {
-	return len(secret) == f.secretBytes && secret[0]&7 == 3 && secret[len(secret)-1]>>(f.secretBits%8) == 0
+	if len(secret) != f.secretBytes {
+		return false
+	}
+	low := subtle.ConstantTimeByteEq(secret[0]&7, 3)
+	high := subtle.ConstantTimeByteEq(secret[len(secret)-1]>>(f.secretBits%8), 0)
+	return low&high == 1
 }
 
 // PublicKeyFromSecretKey derives a public key after checking the scalar constraints.
-func (set ParameterSet) PublicKeyFromSecretKey(secret []byte) ([]byte, error) {
+// Secret arithmetic and encoding run inside subtle.WithDataIndependentTiming.
+func (set ParameterSet) PublicKeyFromSecretKey(secret []byte) (public []byte, err error) {
 	f, err := set.parameters()
 	if err != nil {
 		return nil, err
@@ -110,14 +117,18 @@ func (set ParameterSet) PublicKeyFromSecretKey(secret []byte) ([]byte, error) {
 	if !f.validSecretKey(secret) {
 		return nil, ErrSecretKey
 	}
+	subtle.WithDataIndependentTiming(func() {
+		public = f.publicKeyFromSecretKey(secret)
+	})
+	return public, err
+}
+
+func (f *parameters) publicKeyFromSecretKey(secret []byte) []byte {
 	kernel := f.ecLadder3pt(f.basisP, f.basisQ, f.basisPmQ, secret, f.curveA24)
-	a, ok := f.ecIsogeny2Chain(kernel, f.curveA24, f.chainLength+f.hdMargin)
-	if !ok {
-		return nil, errors.New("mike: curve normalization failed")
-	}
+	a := f.ecIsogeny2Chain(kernel, f.curveA24, f.chainLength+f.hdMargin)
 	public := make([]byte, f.publicBytes)
 	f.fp2Encode(public, a)
-	return public, nil
+	return public
 }
 
 // ParseSecretKey checks the C sampling constraints and returns an independent copy.
@@ -150,20 +161,21 @@ func (f *parameters) decodePublicKey(encoded []byte) (fp2, error) {
 	if len(encoded) != f.publicBytes {
 		return fp2{}, ErrPublicKey
 	}
-	re, err := f.fpDecode(encoded[:f.fieldBytes])
-	if err != nil {
+	reValid := f.fpEncodingCanonical(encoded[:f.fieldBytes])
+	imValid := f.fpEncodingCanonical(encoded[f.fieldBytes:])
+	if reValid&imValid != 1 {
 		return fp2{}, ErrPublicKey
 	}
-	im, err := f.fpDecode(encoded[f.fieldBytes:])
-	if err != nil {
-		return fp2{}, ErrPublicKey
-	}
+	// Both encodings are canonical, so the backend decoder cannot fail.
+	re, _ := f.fpDecode(encoded[:f.fieldBytes])
+	im, _ := f.fpDecode(encoded[f.fieldBytes:])
 	return fp2{re, im}, nil
 }
 
 // Exchange derives the 32-byte shared secret and checks the scalar, public-key
 // encoding, and protocol gluing conditions. On error the shared secret is zero.
-func (set ParameterSet) Exchange(peer, secret []byte) ([SharedSecretSize]byte, error) {
+// Secret arithmetic, encoding, and hashing run inside subtle.WithDataIndependentTiming.
+func (set ParameterSet) Exchange(peer, secret []byte) (shared [SharedSecretSize]byte, err error) {
 	f, err := set.parameters()
 	if err != nil {
 		return [SharedSecretSize]byte{}, err
@@ -171,17 +183,23 @@ func (set ParameterSet) Exchange(peer, secret []byte) ([SharedSecretSize]byte, e
 	if !f.validSecretKey(secret) {
 		return [SharedSecretSize]byte{}, ErrSecretKey
 	}
-	var encoded [4 * (maxPublicKeySize / 2)]byte
-	invariants := encoded[:4*f.fieldBytes]
-	if err := f.exchangeInvariants(invariants, peer, secret); err != nil {
+	subtle.WithDataIndependentTiming(func() {
+		var encoded [4 * (maxPublicKeySize / 2)]byte
+		invariants := encoded[:4*f.fieldBytes]
+		err = f.exchangeInvariants(invariants, peer, secret)
+		// Hash even on rejection; the returned status is handled afterwards.
+		shared = sha3.Sum256(invariants)
+	})
+	if err != nil {
 		return [SharedSecretSize]byte{}, err
 	}
-	return sha3.Sum256(invariants), nil
+	return shared, nil
 }
 
 // HashSharedSecret hashes four canonical field invariants with SHA3-256.
 // The encoding must have length 4*set.FieldElementSize().
-func (set ParameterSet) HashSharedSecret(encoded []byte) ([SharedSecretSize]byte, error) {
+// All four components are checked before reporting an invalid encoding.
+func (set ParameterSet) HashSharedSecret(encoded []byte) (shared [SharedSecretSize]byte, err error) {
 	f, err := set.parameters()
 	if err != nil {
 		return [SharedSecretSize]byte{}, err
@@ -189,10 +207,15 @@ func (set ParameterSet) HashSharedSecret(encoded []byte) ([SharedSecretSize]byte
 	if len(encoded) != 4*f.fieldBytes {
 		return [SharedSecretSize]byte{}, ErrInvariants
 	}
-	for i := 0; i < 4; i++ {
-		if _, err := f.fpDecode(encoded[i*f.fieldBytes : (i+1)*f.fieldBytes]); err != nil {
-			return [SharedSecretSize]byte{}, ErrInvariants
+	valid := 1
+	subtle.WithDataIndependentTiming(func() {
+		for i := 0; i < 4; i++ {
+			valid &= f.fpEncodingCanonical(encoded[i*f.fieldBytes : (i+1)*f.fieldBytes])
 		}
+		shared = sha3.Sum256(encoded)
+	})
+	if valid != 1 {
+		return [SharedSecretSize]byte{}, ErrInvariants
 	}
-	return sha3.Sum256(encoded), nil
+	return shared, nil
 }

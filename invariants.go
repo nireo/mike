@@ -3,8 +3,8 @@
 package mike
 
 // relativeInvariants follows weil/ref/lvlx/invariants.c and computes
-// 2*I1/I0,...,2*I9/I0. No division is performed when I0 is zero: like C,
-// fpInv(0) gives zero, which the exchange rejects as an all-zero result.
+// 2*I1/I0,...,2*I9/I0. Inversion uses the same fixed exponent when I0 is
+// zero: like C, fpInv(0) gives zero and exchange rejects the all-zero result.
 func (f *parameters) relativeInvariants(theta weilPoint) [9]fp {
 	t0, t1 := f.fpAdd(theta[0], theta[5]), f.fpSub(theta[0], theta[5])
 	t2, t3 := f.fpAdd(theta[7], theta[9]), f.fpSub(theta[7], theta[9])

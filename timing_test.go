@@ -16,7 +16,8 @@ import (
 // It reports raw Welch t statistics without asserting a noisy pass threshold.
 // Run alone, without -race, coverage, or fuzz instrumentation:
 // MIKE_TIMING_SAMPLES=32 go test -run '^TestTimingReview$' -count=1 -v
-// MIKE_TIMING_DIT=1 enables the stdlib timing mode during measurements.
+// MIKE_TIMING_DIT=1 enables the stdlib timing mode for primitive measurements.
+// Public key derivation and exchange always enable it in the production API.
 func TestTimingReview(t *testing.T) {
 	value := os.Getenv("MIKE_TIMING_SAMPLES")
 	if value == "" {

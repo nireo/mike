@@ -16,8 +16,8 @@ func BenchmarkParameterSets(b *testing.B) {
 }
 
 // BenchmarkParameterSetsDIT additionally enters the stdlib's architectural
-// timing mode for each API call. This measures a candidate mitigation from the
-// timing review; the production API does not yet enable this mode itself.
+// timing mode outside each API call. The production API enables DIT internally;
+// this variant measures the overhead of nesting its wrapper in a caller's region.
 func BenchmarkParameterSetsDIT(b *testing.B) {
 	benchmarkParameterSets(b, true)
 }

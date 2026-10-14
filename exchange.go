@@ -46,6 +46,11 @@ func (f *parameters) exchangeInvariants(encoded, peer, secret []byte) error {
 		f.fpEncode(encoded[i*f.fieldBytes:(i+1)*f.fieldBytes], x)
 	}
 	if allZero == 1 {
+		// Preserve the C reference's rejection. The paper explicitly allows
+		// rare zero-key failures (p.79, footnote 22; Heuristic E.1). DIT and
+		// unconditional hashing in Exchange do not hide this status. Its
+		// scalar independence for accepted peers has not been established;
+		// do not remove this check or claim a full constant-time guarantee.
 		return ErrExchange
 	}
 	return nil

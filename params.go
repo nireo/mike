@@ -23,6 +23,7 @@ type parameters struct {
 	cofactorLE   []byte
 	cofactorBits int
 	primeBytes   []byte
+	primeLE      [maxPublicKeySize / 2]byte
 	prime        *bigmod.Modulus
 
 	inverseExponent, sqrtExponent, progenitorExponent, legendreExponent []byte
@@ -47,6 +48,9 @@ func newParameters(name string, securityBits, fieldBytes, secretBits, chainLengt
 		cofactorBits: bits.Len(uint(cofactor)), primeBytes: p.Bytes(),
 	}
 	f.prime = mustModulus(f.primeBytes)
+	for i, b := range f.primeBytes {
+		f.primeLE[len(f.primeBytes)-1-i] = b
+	}
 	for i := range f.small {
 		f.small[i] = fp{n: f.limbCount}
 		f.small[i].limbs[0] = uint(i)
