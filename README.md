@@ -5,7 +5,16 @@ elliptic-curve isogenies: parties exchange public keys and independently derive
 the same shared secret. This package provides pure Go key generation and
 exchange for all six MIKE parameter sets.
 
-Requires Go 1.27.
+Requires Go 1.24 or later for the standard library's `crypto/sha3` package.
+Benchmarks and timing experiments also use APIs introduced in Go 1.24.
+The implementation has unresolved timing findings and should
+not currently be described as constant-time.
+
+```sh
+go get github.com/nireo/mike
+```
+
+## Usage
 
 ```go
 package main
@@ -49,6 +58,8 @@ and `HashSharedSecret`. Parsers return independent copies. Public-key parsing
 checks canonical encoding; `Exchange` performs the protocol's curve/gluing
 checks and returns a zero shared secret on error.
 
+## Parameter sets
+
 Sizes are in bytes. Security levels are the C reference's nominal values;
 shared secrets are 32 bytes for every set.
 
@@ -66,6 +77,8 @@ parameters; randomness, SHA3-256, and conditional selection use the standard
 library. No cgo, assembly, or external module dependencies. Field temporaries use
 fixed-size stack storage and remain in Montgomery form between multiplications.
 
+## Development
+
 Tests cover C vectors for every set, agreement, invalid keys, field arithmetic,
 and fuzz seed corpora. Run tests, benchmarks, or one fuzz target at a time:
 
@@ -75,8 +88,6 @@ go test -race ./...
 go test -run '^$' -bench '^BenchmarkParameterSets(DIT)?$' -benchmem -cpu 1 -count 3
 go test -run '^$' -fuzz '^FuzzExchange$' -fuzztime 30s -parallel 2 -timeout 5m
 ```
-
-Benchmarks cover all sets, with results compared against the published C timings.
 
 The five [fuzz targets](fuzz_test.go) cover secret/public key parsing, invariant
 hashing, malformed peers, and generated-key agreement. Normal tests need only
@@ -89,3 +100,8 @@ and clang:
 python3 testdata/generate_vectors.py
 gofmt -w params_generated.go
 ```
+
+## License
+
+[Apache License 2.0](LICENSE). The vendored bigmod backend retains its
+[BSD license](internal/bigmod/LICENSE).

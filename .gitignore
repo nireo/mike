@@ -6,3 +6,7 @@
 *.test
 __pycache__/
 *.pyc
+
+# Profiling and coverage output.
+*.prof
+coverage.out

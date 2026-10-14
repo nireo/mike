@@ -17,7 +17,6 @@ import (
 // Run alone, without -race, coverage, or fuzz instrumentation:
 // MIKE_TIMING_SAMPLES=32 go test -run '^TestTimingReview$' -count=1 -v
 // MIKE_TIMING_DIT=1 enables the stdlib timing mode during measurements.
-// See TIMING_REVIEW.md for larger experiments on the primitives alone.
 func TestTimingReview(t *testing.T) {
 	value := os.Getenv("MIKE_TIMING_SAMPLES")
 	if value == "" {
